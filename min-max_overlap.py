@@ -8,8 +8,8 @@ conn = PgConnection()
 rule_cursor = conn.cursor()
 format_cursor = conn.cursor()
 
-SrcSet = namedtuple('SrcSet', 'course_id offer_nbr min_gpa max_gpa course_status')
-DstSet = namedtuple('DstSet', 'course_id, offer_nbr, is_bkcr')
+SrcCourse = namedtuple('SrcCourse', 'course_id offer_nbr min_gpa max_gpa course_status')
+DstCourse = namedtuple('DstCourse', 'course_id, offer_nbr, is_bkcr')
 
 
 def init_rule_info():
@@ -17,7 +17,7 @@ def init_rule_info():
       - source course set: course_id, offer_nbr, min_gpa, max_gpa, course_status
       - destination course set: course_id, offer_nbr, is_bkcr
   """
-  return [set(), set()]
+  return {'key_1': set(), set()}
 
 
 def key_order(key: str):
@@ -32,8 +32,6 @@ def key_order(key: str):
 
 def format_rule(rule_id: int) -> str:
   """ Return string description of a transfer rule.
-      By definition, only rules with ambiguities get here, so this is where information about the
-      type of ambiguity is captured in the rule_info dict.
   """
   format_cursor.execute(f'select rule_key(id) from transfer_rules where id = {rule_id}')
   rule_key = format_cursor.fetchone().rule_key
@@ -53,8 +51,8 @@ select  s.course_id, s.offer_nbr,
                         """)
   courses = format_cursor.fetchall()
   # Add each sending course to rule_info[rule_key][0]
-  for course in courses:
-    rule_info[rule_key][0].add(course)
+  # for course in courses:
+  #   rule_info[rule_key][0].add(course)
   returnVal = ' and '.join([f'{_grade(c.min_gpa, c.max_gpa)} {c.discipline} {c.catalog_number} '
                             f'[{c.course_id:06} {c.course_status}]'
                             for c in courses])
@@ -72,7 +70,7 @@ select d.course_id, d.discipline, d.catalog_number, c.course_status, c.attribute
   courses = format_cursor.fetchall()
   # Add each receiving course to rule_info[rule_key][1]
   for course in courses:
-    rule_info[rule_key][1].add(course)
+    # rule_info[rule_key][1].add(course)
     dest_list.append(f'{course.discipline} {course.catalog_number} [{course.course_id:06} '
                      f'{course.course_status}]')
   returnVal += ' and '.join(dest_list)
@@ -81,10 +79,10 @@ select d.course_id, d.discipline, d.catalog_number, c.course_status, c.attribute
 
 if __name__ == '__main__':
 
-  rule_info = defaultdict(init_rule_info)
+  ambiguous_pairs = defaultdict(init_rule_info)
   course_rules = defaultdict(set)
   rule_cursor.execute("""
--- Get source courses that appear in multiple rules for the same destination institution.
+-- Get source courses that appear in pairs of rules for the same destination institution.
 select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_status,
        s1.min_gpa as min_1, s1.max_gpa as max_1,
        r1.id as r1_id, rule_key(r1.id) as key_1, r1.priority as priority_1,
@@ -101,8 +99,7 @@ select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_st
   order by course_id
                  """)
 
-  # Full report in CSV format of all courses that appear in more than one rule having ambiguous
-  # criteria for selecting the most-appropriate rule.
+  # Filter for cases where there is no way to tell which rule should apply.
   with open('./min-max_overlap.csv', 'w') as mmo_file:
     print('course_id,course,min_1,max_1,rule 1,min_2,max_2,rule 2', file=mmo_file)
     for row in rule_cursor.fetchall():
