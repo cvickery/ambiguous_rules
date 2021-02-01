@@ -51,14 +51,13 @@ select  s.course_id, s.offer_nbr,
     and c.course_id = s.course_id
     and c.offer_nbr = s.offer_nbr
                         """)
-  # You are here: need add each sending course to rule_info[rule_key][0]
-  rows = format_cursor.fetchall()
-  for row in rows:
-    rule_info[rule_key][0].add row
-    # This is bogus:
-    returnVal = ' and '.join([f'{_grade(r.min_gpa, r.max_gpa)} {r.discipline} {r.catalog_number} '
-                            f'[{r.course_id:06} {r.course_status}]'
-                           for r in row])
+  courses = format_cursor.fetchall()
+  # Add each sending course to rule_info[rule_key][0]
+  for course in courses:
+    rule_info[rule_key][0].add(course)
+  returnVal = ' and '.join([f'{_grade(c.min_gpa, c.max_gpa)} {c.discipline} {c.catalog_number} '
+                            f'[{c.course_id:06} {c.course_status}]'
+                            for c in courses])
   returnVal += ' => '
 
   # Gather the set of receiving courses for the rule
@@ -69,17 +68,14 @@ select d.course_id, d.discipline, d.catalog_number, c.course_status, c.attribute
     and d.course_id = c.course_id
     and d.offer_nbr = c.offer_nbr
                         """)
-  # You are here: need add each sending course to rule_info[rule_key][0]
-  rows = format_cursor.fetchall()
-  for row in rows:
-    rule_info[rule_key][1].add(row)
-  # This is bogus
-  for course in format_cursor.fetchall():
-    if 'BKCR' in course.attributes:
-      rule_info[rule_key][3] += 1
-    courses.append(f'{course.discipline} {course.catalog_number} [{course.course_id:06} '
-                   f'{course.course_status}]')
-  returnVal += ' and '.join(courses)
+  dest_list = []
+  courses = format_cursor.fetchall()
+  # Add each receiving course to rule_info[rule_key][1]
+  for course in courses:
+    rule_info[rule_key][1].add(course)
+    dest_list.append(f'{course.discipline} {course.catalog_number} [{course.course_id:06} '
+                     f'{course.course_status}]')
+  returnVal += ' and '.join(dest_list)
   return returnVal
 
 
@@ -124,8 +120,8 @@ select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_st
               f'{row.min_2}, {row.max_2}, {row.key_2}: {text_2}', file=mmo_file)
 
   with open('./rule_report.csv', 'w') as report_file:
-    print('Rule, Num Cases, Num Sending, Num Receiving, Num BKCR', file=report_file)
+    print('Rule, send_size, recv_size', file=report_file)
     keys = sorted(rule_info.keys(), key=key_order)
     for key in keys:
       data = ','.join([f'{v}' for v in rule_info[key]])
-      print(f'{key}, {data}', file=report_file)
+      print(f'{key}, {len(rule_info[key][0])}, {len(rule_info[key][1])}', file=report_file)
