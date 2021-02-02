@@ -10,6 +10,7 @@ format_cursor = conn.cursor()
 
 SrcCourse = namedtuple('SrcCourse', 'course_id offer_nbr min_gpa max_gpa course_status')
 DstCourse = namedtuple('DstCourse', 'course_id, offer_nbr, is_bkcr')
+CourseSets = namedtuple('CourseSet', 'src_1 dst_1 src_2 dst_2')
 
 
 def init_rule_info():
@@ -17,7 +18,7 @@ def init_rule_info():
       - source course set: course_id, offer_nbr, min_gpa, max_gpa, course_status
       - destination course set: course_id, offer_nbr, is_bkcr
   """
-  return {'key_1': set(), set()}
+  return {CourseSets._make([set(), set(), set(), set()])}
 
 
 def key_order(key: str):
@@ -102,7 +103,10 @@ select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_st
   # Filter for cases where there is no way to tell which rule should apply.
   with open('./min-max_overlap.csv', 'w') as mmo_file:
     print('course_id,course,min_1,max_1,rule 1,min_2,max_2,rule 2', file=mmo_file)
+    m = 0
+    n = rule_cursor.fetchall()
     for row in rule_cursor.fetchall():
+      print(f'{m}/{n}\r', end='')
       course = (row.course_id, row.offer_nbr)
       if row.priority_1 == row.priority_2 and (row.max_1 > row.min_2 or row.max_2 > row.min_1):
         if row.r2_id in course_rules[row.course_id] and row.r2_id in course_rules[row.course_id]:
@@ -117,8 +121,5 @@ select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_st
               f'{row.min_2}, {row.max_2}, {row.key_2}: {text_2}', file=mmo_file)
 
   with open('./rule_report.csv', 'w') as report_file:
-    print('Rule, send_size, recv_size', file=report_file)
-    keys = sorted(rule_info.keys(), key=key_order)
-    for key in keys:
-      data = ','.join([f'{v}' for v in rule_info[key]])
-      print(f'{key}, {len(rule_info[key][0])}, {len(rule_info[key][1])}', file=report_file)
+    for key, value in ambiguous_pairs.items():
+      print(f'{key}, {value}')
