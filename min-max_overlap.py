@@ -5,20 +5,20 @@ from pgconnection import PgConnection
 from format_rules import _grade
 
 conn = PgConnection()
-rule_cursor = conn.cursor()
-format_cursor = conn.cursor()
+first_cursor = conn.cursor()  # Finds courses with ambiguous courses
+format_cursor = conn.cursor()  # Used to format a rule
+second_cursor = conn.cursor()  #
 
-SrcCourse = namedtuple('SrcCourse', 'course_id offer_nbr min_gpa max_gpa course_status')
-DstCourse = namedtuple('DstCourse', 'course_id, offer_nbr, is_bkcr')
-CourseSets = namedtuple('CourseSet', 'src_1 dst_1 src_2 dst_2')
+SrcCourse = namedtuple('SrcCourse', 'course_id offer_nbr min_gpa max_gpa designation course_status')
+DstCourse = namedtuple('DstCourse', 'course_id offer_nbr is_msg is_bkcr course_status')
+RuleInfo = namedtuple('RuleInfo', 'src_courses dst_courses text')
 
 
 def init_rule_info():
-  """ Initialize structure for recording info about ambiguous rules.
-      - source course set: course_id, offer_nbr, min_gpa, max_gpa, course_status
-      - destination course set: course_id, offer_nbr, is_bkcr
+  """ Initialize structure for recording info about ambiguous rules as a tuple of two sets.
+      Set[0] is SrcCourses; set[1] is DstCourses
   """
-  return {CourseSets._make([set(), set(), set(), set()])}
+  return RuleInfo._make([set(), set(), []])
 
 
 def key_order(key: str):
@@ -44,6 +44,7 @@ select  s.course_id, s.offer_nbr,
         s.catalog_number,
         min_gpa,
         max_gpa,
+        c.designation,
         c.course_status
   from source_courses s, cuny_courses c
   where s.rule_id = {rule_id}
@@ -51,9 +52,15 @@ select  s.course_id, s.offer_nbr,
     and c.offer_nbr = s.offer_nbr
                         """)
   courses = format_cursor.fetchall()
-  # Add each sending course to rule_info[rule_key][0]
-  # for course in courses:
-  #   rule_info[rule_key][0].add(course)
+  for course in courses:
+    # print(SrcCourse._make([course.course_id,
+    rule_info[rule_key].src_courses.add(SrcCourse._make([course.course_id,
+                                                         course.offer_nbr,
+                                                         course.min_gpa,
+                                                         course.max_gpa,
+                                                         course.designation,
+                                                         course.course_status]))
+
   returnVal = ' and '.join([f'{_grade(c.min_gpa, c.max_gpa)} {c.discipline} {c.catalog_number} '
                             f'[{c.course_id:06} {c.course_status}]'
                             for c in courses])
@@ -61,7 +68,13 @@ select  s.course_id, s.offer_nbr,
 
   # Gather the set of receiving courses for the rule
   format_cursor.execute(f"""
-select d.course_id, d.discipline, d.catalog_number, c.course_status, c.attributes
+select  d.course_id,
+        d.offer_nbr,
+        d.discipline,
+        d.catalog_number,
+        c.designation,
+        c.attributes,
+        c.course_status
   from destination_courses d, cuny_courses c
   where rule_id = {rule_id}
     and d.course_id = c.course_id
@@ -71,18 +84,26 @@ select d.course_id, d.discipline, d.catalog_number, c.course_status, c.attribute
   courses = format_cursor.fetchall()
   # Add each receiving course to rule_info[rule_key][1]
   for course in courses:
-    # rule_info[rule_key][1].add(course)
+    # print((DstCourse._make([course.course_id,
+    rule_info[rule_key].dst_courses.add(DstCourse._make([course.course_id,
+                                                         course.offer_nbr,
+                                                         (course.designation == 'MLA'
+                                                          or course.designation == 'MNL'),
+                                                         'BKCR' in course.attributes,
+                                                        course.course_status]))
     dest_list.append(f'{course.discipline} {course.catalog_number} [{course.course_id:06} '
                      f'{course.course_status}]')
   returnVal += ' and '.join(dest_list)
+  rule_info[rule_key].text.append(returnVal)
   return returnVal
 
 
 if __name__ == '__main__':
 
-  ambiguous_pairs = defaultdict(init_rule_info)
+  rule_info = defaultdict(init_rule_info)
+  ambiguous_pairs = []
   course_rules = defaultdict(set)
-  rule_cursor.execute("""
+  first_cursor.execute("""
 -- Get source courses that appear in pairs of rules for the same destination institution.
 select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_status,
        s1.min_gpa as min_1, s1.max_gpa as max_1,
@@ -104,12 +125,17 @@ select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_st
   with open('./min-max_overlap.csv', 'w') as mmo_file:
     print('course_id,course,min_1,max_1,rule 1,min_2,max_2,rule 2', file=mmo_file)
     m = 0
-    n = rule_cursor.fetchall()
-    for row in rule_cursor.fetchall():
-      print(f'{m}/{n}\r', end='')
+    n = first_cursor.rowcount
+    for row in first_cursor.fetchall():
+      m += 1
+      print(f' {m:06,}/{n:06,}\r', end='')
       course = (row.course_id, row.offer_nbr)
       if row.priority_1 == row.priority_2 and (row.max_1 > row.min_2 or row.max_2 > row.min_1):
+        # Update info for this pair of rules
+        ambiguous_pairs.append((row.key_1, row.key_2))
+        # Add row for this course to CSV report
         if row.r2_id in course_rules[row.course_id] and row.r2_id in course_rules[row.course_id]:
+          # Skip rules already seen for this course
           continue
         course_rules[course].add(row.r1_id)
         course_rules[course].add(row.r2_id)
@@ -121,5 +147,5 @@ select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_st
               f'{row.min_2}, {row.max_2}, {row.key_2}: {text_2}', file=mmo_file)
 
   with open('./rule_report.csv', 'w') as report_file:
-    for key, value in ambiguous_pairs.items():
-      print(f'{key}, {value}')
+    for pair in ambiguous_pairs:
+      print(f'\n{pair[0]} {rule_info[pair[0]].text[0]}\n{pair[1]} {rule_info[pair[1]].text[0]}')
