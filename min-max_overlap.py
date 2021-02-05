@@ -1,5 +1,7 @@
 #! /usr/local/bin/python3
 
+import argparse
+
 from collections import defaultdict, namedtuple
 from pgconnection import PgConnection
 from format_rules import _grade
@@ -50,6 +52,7 @@ select  s.course_id, s.offer_nbr,
   where s.rule_id = {rule_id}
     and c.course_id = s.course_id
     and c.offer_nbr = s.offer_nbr
+  order by s.discipline, numeric_part(s.catalog_number)
                         """)
   courses = format_cursor.fetchall()
   for course in courses:
@@ -62,7 +65,7 @@ select  s.course_id, s.offer_nbr,
                                                          course.course_status]))
 
   returnVal = ' and '.join([f'{_grade(c.min_gpa, c.max_gpa)} {c.discipline} {c.catalog_number} '
-                            f'[{c.course_id:06} {c.course_status}]'
+                            f'[{c.course_id:06}.{course.offer_nbr} {c.course_status}]'
                             for c in courses])
   returnVal += ' => '
 
@@ -91,14 +94,19 @@ select  d.course_id,
                                                           or course.designation == 'MNL'),
                                                          'BKCR' in course.attributes,
                                                         course.course_status]))
-    dest_list.append(f'{course.discipline} {course.catalog_number} [{course.course_id:06} '
-                     f'{course.course_status}]')
+    dest_list.append(f'{course.discipline} {course.catalog_number} '
+                     f'[{course.course_id:06}.{course.offer_nbr} {course.course_status}]')
   returnVal += ' and '.join(dest_list)
   rule_info[rule_key].text.append(returnVal)
   return returnVal
 
 
 if __name__ == '__main__':
+
+  parser = argparse.ArgumentParser(description='Test DGW Parser')
+  parser.add_argument('-d', '--debug', action='store_true', default=False)
+  parser.add_argument('-p', '--progress', action='store_true', default=False)
+  args = parser.parse_args()
 
   rule_info = defaultdict(init_rule_info)
   ambiguous_pairs = []
@@ -127,8 +135,11 @@ select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_st
     m = 0
     n = first_cursor.rowcount
     for row in first_cursor.fetchall():
-      m += 1
-      print(f' {m:06,}/{n:06,}\r', end='')
+      if args.progress:
+        if m == 0:
+          print('Build rule pairs')
+        m += 1
+        print(f' {m:06,}/{n:06,}\r', end='')
       course = (row.course_id, row.offer_nbr)
       if row.priority_1 == row.priority_2 and (row.max_1 > row.min_2 or row.max_2 > row.min_1):
         # Update info for this pair of rules
@@ -146,6 +157,34 @@ select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_st
               f'{row.min_1}, {row.max_1}, {row.key_1}: {text_1}, '
               f'{row.min_2}, {row.max_2}, {row.key_2}: {text_2}', file=mmo_file)
 
+  # Generate Report
+  """ For each pair of rules that includes at least one course ambiguity, report:
+         -  If the rules are redundant, and if so tell whether the difference is in the component
+            subject area, the group number, or both.
+         -  If the rules are not redundant:
+            - List all ambiguous courses and their overlapping grade ranges
+         -  - For each receiving course is it msg; is it BKCR; indicate which rule (or rules) it
+              belongs to.
+  """
+  m = 0
+  n = len(ambiguous_pairs)
   with open('./rule_report.csv', 'w') as report_file:
     for pair in ambiguous_pairs:
-      print(f'\n{pair[0]} {rule_info[pair[0]].text[0]}\n{pair[1]} {rule_info[pair[1]].text[0]}')
+      if args.progress:
+        if m == 0:
+          print('Analyze rule pairs')
+        m += 1
+        print(f' {m:06,}/{n:06,}\r', end='')
+      if args.debug:
+        print(f'\n{pair[0]} {rule_info[pair[0]].text[0]}\n{pair[1]} {rule_info[pair[1]].text[0]}')
+
+      # Are the source and destination course sets the same for the two rules?
+      source_1 = set([(rule.course_id, rule.offer_nbr) for rule in rule_info[pair[0]].src_courses])
+      source_2 = set([(rule.course_id, rule.offer_nbr) for rule in rule_info[pair[1]].src_courses])
+      dest_1 = set([(rule.course_id, rule.offer_nbr) for rule in rule_info[pair[0]].dst_courses])
+      dest_2 = set([(rule.course_id, rule.offer_nbr) for rule in rule_info[pair[1]].dst_courses])
+      if source_1 == source_2 and dest_1 == dest_2:
+        same_comp = 'same' if pair[0].split(':')[2] == pair[1].split(':')[2] else 'different'
+        print(f'\n{rule_info[pair[0]].text}\n{rule_info[pair[1]].text}\n  {pair[0]} equals '
+              f'{pair[1]} with {same_comp} component subject areas', file=report_file)
+
