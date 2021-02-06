@@ -185,6 +185,5 @@ select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_st
       dest_2 = set([(rule.course_id, rule.offer_nbr) for rule in rule_info[pair[1]].dst_courses])
       if source_1 == source_2 and dest_1 == dest_2:
         same_comp = 'same' if pair[0].split(':')[2] == pair[1].split(':')[2] else 'different'
-        print(f'\n{rule_info[pair[0]].text}\n{rule_info[pair[1]].text}\n  {pair[0]} equals '
-              f'{pair[1]} with {same_comp} component subject areas', file=report_file)
-
+        print(f'\n{rule_info[pair[0]].text}\n{rule_info[pair[1]].text}\n  {pair[0]} is equivalent '
+              f'to {pair[1]} with {same_comp} component subject areas', file=report_file)
