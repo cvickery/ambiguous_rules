@@ -39,7 +39,7 @@ def format_range(course, ambiguous_low, ambiguous_high):
   high = max(ambiguous_low, ambiguous_high)
   range = _grade(low, high)
   preposition = ' ' if range == 'Pass' else ' in '
-  return f'  Ambiguity: {range}{preposition}{course.discipline} {course.catalog_number}'
+  return f'  Grade ambiguity: {range}{preposition}{course.discipline} {course.catalog_number}'
 
 
 def format_rule(rule_id: int) -> str:
@@ -122,6 +122,9 @@ if __name__ == '__main__':
   rule_info = defaultdict(init_rule_info)
   ambiguous_pairs = []
   course_rules = defaultdict(set)
+
+  if args.progress:
+    print('Start DB Query')
   first_cursor.execute("""
 -- Get source courses that appear in pairs of rules for the same destination institution.
 select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_status,
@@ -188,8 +191,8 @@ select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_st
         print(f' {m:06,}/{n:06,}\r', end='')
 
       # Tell what rule-pair is being reported on
-      print(f'\n{pair[0]} {rule_info[pair[0]].text[0]}\n{pair[1]} {rule_info[pair[1]].text[0]}',
-            file=report_file)
+      print(f'\n{pair[0]:24} {rule_info[pair[0]].text[0]}\n'
+            f'{pair[1]:24} {rule_info[pair[1]].text[0]}', file=report_file)
 
       # What sending courses are problematic, and what is the range of overlap?
       for course_1 in rule_info[pair[0]].src_courses:
@@ -209,6 +212,12 @@ select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_st
         same_comp = 'same' if pair[0].split(':')[2] == pair[1].split(':')[2] else 'different'
         print(f'  Same sending and receiving courses with {same_comp} component subject areas',
               file=report_file)
+      elif source_1 == source_2:
+        print(f'  Same sending courses; different receiving courses', file=report_file)
+      elif dest_1 == dest_2:
+        print(f'  Different sending courses; same receiving courses', file=report_file)
+      else:
+        print(f'  Different sending and receiving courses', file=report_file)
 
       # Are receiving courses BKCR and/or MSG?
       all_blanket_1 = True
