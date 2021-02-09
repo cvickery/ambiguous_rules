@@ -183,7 +183,7 @@ select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_st
   m = 0
   n = len(ambiguous_pairs)
   with open('./rule_report.txt', 'w') as report_file:
-    for pair in ambiguous_pairs:
+    for pair in sorted(ambiguous_pairs):
       if args.progress:
         if m == 0:
           print('Analyze rule pairs')
