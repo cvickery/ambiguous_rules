@@ -96,5 +96,24 @@ ignored!) as appropriate.
     course” the rule that leads to blanket credit should be dropped.
 
   - **Multiple Real** If there is ambiguity about which of two non-BKCR receiving course should be
-    used, the receiving department (or departments) will have to be consulted to determine which
+    used, the receiving department or departments will have to be consulted to determine which
     rule should be retained.
+
+## Results
+
+The program, min-max_overlap.py generates two files:
+
+  - _min-max_overlap.csv_ Lists all courses that appear in two rules but with overlapping grade
+    requirement ranges, along with information about the tranfer rules involved. This represents
+    the internal data collected for producing the second output file, which is more useful.
+
+  - _rules_report.txt_ This is a text file that identifies pairs of ambiguous rules, followed by
+    information about the nature of the problems found and information that might be helpful for
+    deciding how to resolve the problem.
+      - For each sending course included in both rules that have overlapping grade ranges, what is
+      the range.
+      - How do the sending and receiving course sets compare? Note that different sending sets are
+      problematic only if they are the same size. If one set is larger than the other, presumably
+      the rule that includes a larger group of sending courses will be used.
+      - Are the receiving courses all BKCR, mixed BKCR and not, or not BKCR at all. Likewise for
+      receiving courses that have one of the “message” designations (MLA and MNL)

@@ -4,6 +4,7 @@ import argparse
 import sys
 
 from collections import defaultdict, namedtuple
+from datetime import date
 from pgconnection import PgConnection
 from format_rules import _grade
 
@@ -152,6 +153,7 @@ select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_st
   where s1.course_id = s2.course_id
     and s1.offer_nbr = s2.offer_nbr
     and s1.course_id = c.course_id
+    and s2.offer_nbr = c.offer_nbr
     and s1.rule_id = r1.id
     and s2.rule_id = r2.id
     and r1.id < r2.id
@@ -198,13 +200,18 @@ select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_st
   """
   m = 0
   n = len(ambiguous_pairs)
-  with open('./rule_report.txt', 'w') as report_file:
+  today_str = date.today().strftime('%Y-%m-%d')
+  with open(f'./{today_str}_rules_report.txt', 'w') as report_file:
     for pair in sorted(ambiguous_pairs, key=lambda x: key_order(x[0])):
       if args.progress:
         if m == 0:
           print('Analyze rule pairs')
         m += 1
         print(f' {m:06,}/{n:06,}\r', end='')
+
+      # Ignore pairs where there are different numbers of sending courses
+      if len(rule_info[pair[0]].src_courses) != len(rule_info[pair[1]].src_courses):
+        continue
 
       # Tell what rule-pair is being reported on
       print(f'\n{pair[0]:24} {rule_info[pair[0]].text[0]}\n'
@@ -285,7 +292,7 @@ select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_st
       elif all_blanket_1 and any_blanket_2:
         print(f'  First rule is all BKCR; Second rule is part BKCR', file=report_file)
       elif all_blanket_1:
-        print(f'  First rule is all BKCR; Second rule not BKCR', file=report_file)
+        print(f'  First rule is all BKCR; Second rule is not BKCR', file=report_file)
 
       elif any_blanket_1 and all_blanket_2:
         print(f'  First rule is part BKCR; Second rule is part BKCR', file=report_file)
@@ -307,7 +314,7 @@ select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_st
       elif all_message_1 and any_message_2:
         print(f'  First rule is all MESG; Second rule is part MESG', file=report_file)
       elif all_message_1:
-        print(f'  First rule is all MESG; Second rule not MESG', file=report_file)
+        print(f'  First rule is all MESG; Second rule is not MESG', file=report_file)
 
       elif any_message_1 and all_message_2:
         print(f'  First rule is part MESG; Second rule is part MESG', file=report_file)
