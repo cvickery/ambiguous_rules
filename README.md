@@ -103,11 +103,11 @@ ignored!) as appropriate.
 
 The program, min-max_overlap.py generates two files:
 
-  - _min-max_overlap.csv_ Lists all courses that appear in two rules but with overlapping grade
+  - _min-max\_overlap.csv_ Lists all courses that appear in two rules but with overlapping grade
     requirement ranges, along with information about the tranfer rules involved. This represents
     the internal data collected for producing the second output file, which is more useful.
 
-  - _rules_report.txt_ This is a text file that identifies pairs of ambiguous rules, followed by
+  - _rules\_report.txt_ This is a text file that identifies pairs of ambiguous rules, followed by
     information about the nature of the problems found and information that might be helpful for
     deciding how to resolve the problem.
       - For each sending course included in both rules that have overlapping grade ranges, what is
