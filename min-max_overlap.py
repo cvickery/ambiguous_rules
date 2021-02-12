@@ -1,6 +1,7 @@
 #! /usr/local/bin/python3
 
 import argparse
+import sys
 
 from collections import defaultdict, namedtuple
 from pgconnection import PgConnection
@@ -9,7 +10,6 @@ from format_rules import _grade
 conn = PgConnection()
 first_cursor = conn.cursor()  # Finds courses with ambiguous courses
 format_cursor = conn.cursor()  # Used to format a rule
-second_cursor = conn.cursor()  #
 
 SrcCourse = namedtuple('SrcCourse', 'course_id offer_nbr discipline catalog_number '
                        'min_gpa max_gpa designation course_status')
@@ -17,6 +17,8 @@ DstCourse = namedtuple('DstCourse', 'course_id offer_nbr is_msg is_bkcr course_s
 RuleInfo = namedtuple('RuleInfo', 'src_courses dst_courses text')
 
 
+# init_rule_info()
+# -------------------------------------------------------------------------------------------------
 def init_rule_info():
   """ Initialize structure for recording info about ambiguous rules as a tuple of two sets.
       Set[0] is SrcCourses; set[1] is DstCourses
@@ -24,24 +26,34 @@ def init_rule_info():
   return RuleInfo._make([set(), set(), []])
 
 
+# key_order()
+# -------------------------------------------------------------------------------------------------
 def key_order(key: str):
+  """ Sort order for rule_keys as recv:send:subj:int(group)
+  """
   parts = key.split(':')
   try:
     parts[3] = f'{int(parts[3]):04}'
   except ValueError as ve:
-    print(key)
+    print(f'Bogus rule_key: {key}', file=sys.stderr)
     return key
-  return(':'.join(parts))
+  return(f'{parts[1]}:{parts[0]}:{parts[2]}:{parts[3]}')
 
 
+# format_range()
+# -------------------------------------------------------------------------------------------------
 def format_range(course, ambiguous_low, ambiguous_high):
+  """ Generate grade ambiguity string, showing the range of overlapping grades for a course.
+  """
   low = min(ambiguous_low, ambiguous_high)
   high = max(ambiguous_low, ambiguous_high)
   range = _grade(low, high)
   preposition = ' ' if range == 'Pass' else ' in '
-  return f'  Grade ambiguity: {range}{preposition}{course.discipline} {course.catalog_number}'
+  return f'{range}{preposition}{course.discipline} {course.catalog_number}'
 
 
+# format_rule()
+# -------------------------------------------------------------------------------------------------
 def format_rule(rule_id: int) -> str:
   """ Return string description of a transfer rule.
   """
@@ -98,7 +110,8 @@ select  d.course_id,
   courses = format_cursor.fetchall()
   # Add each receiving course to rule_info[rule_key][1]
   for course in courses:
-    # print((DstCourse._make([course.course_id,
+    # if rule_key == 'BAR01:QNS01:BIO:1':
+    #   print(course, file=sys.stderr)
     rule_info[rule_key].dst_courses.add(DstCourse._make([course.course_id,
                                                          course.offer_nbr,
                                                          (course.designation == 'MLA'
@@ -109,6 +122,9 @@ select  d.course_id,
                      f'[{course.course_id:06}.{course.offer_nbr} {course.course_status}]')
   returnVal += ' and '.join(dest_list)
   rule_info[rule_key].text.append(returnVal)
+  # if rule_key == 'BAR01:QNS01:BIO:1':
+  #   print(rule_info[rule_key], file=sys.stderr)
+  #   exit()
   return returnVal
 
 
@@ -124,7 +140,7 @@ if __name__ == '__main__':
   course_rules = defaultdict(set)
 
   if args.progress:
-    print('Start DB Query')
+    print('Find problem rules')
   first_cursor.execute("""
 -- Get source courses that appear in pairs of rules for the same destination institution.
 select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_status,
@@ -183,7 +199,7 @@ select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_st
   m = 0
   n = len(ambiguous_pairs)
   with open('./rule_report.txt', 'w') as report_file:
-    for pair in sorted(ambiguous_pairs):
+    for pair in sorted(ambiguous_pairs, key=lambda x: key_order(x[0])):
       if args.progress:
         if m == 0:
           print('Analyze rule pairs')
@@ -195,13 +211,19 @@ select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_st
             f'{pair[1]:24} {rule_info[pair[1]].text[0]}', file=report_file)
 
       # What sending courses are problematic, and what is the range of overlap?
+      ambiguities = []
       for course_1 in rule_info[pair[0]].src_courses:
         for course_2 in rule_info[pair[1]].src_courses:
           if (course_1.course_id, course_1.offer_nbr) == (course_2.course_id, course_2.offer_nbr):
             if course_1.max_gpa > course_2.min_gpa or course_2.max_gpa > course_1.min_gpa:
               ambiguous_low = max(course_1.min_gpa, course_2.min_gpa)
               ambiguous_high = min(course_1.max_gpa, course_2.max_gpa)
-              print(format_range(course_1, ambiguous_low, ambiguous_high), file=report_file)
+              ambiguities.append(format_range(course_1, ambiguous_low, ambiguous_high))
+      if len(ambiguities) == 1:
+        print(f'  Grade ambiguity: {ambiguities[0]}', file=report_file)
+      else:
+        ambiguity_str = '; '.join(ambiguities)
+        print(f'  Grade ambiguities: {ambiguity_str}', file=report_file)
 
       # Are the source and destination course sets the same for the two rules?
       source_1 = set([(rule.course_id, rule.offer_nbr) for rule in rule_info[pair[0]].src_courses])
@@ -248,33 +270,57 @@ select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_st
         else:
           all_blanket_2 = False
 
-      # So many possibilities...
+      # So many possibilities:
+      #   all all
+      #   all any
+      #   all none
+      #   any all
+      #   any any
+      #   any none
+      #   none all
+      #   none any
+      #   none none
       if all_blanket_1 and all_blanket_2:
         print(f'  Both rules are all BKCR', file=report_file)
+      elif all_blanket_1 and any_blanket_2:
+        print(f'  First rule is all BKCR; Second rule is part BKCR', file=report_file)
       elif all_blanket_1:
-        if any_blanket_2:
-          print(f'  First rule is all BKCR; Second rule is part BKCR', file=report_file)
-        else:
-          print(f'  First rule is all BKCR; Second rule is not BKCR', file=report_file)
+        print(f'  First rule is all BKCR; Second rule not BKCR', file=report_file)
+
+      elif any_blanket_1 and all_blanket_2:
+        print(f'  First rule is part BKCR; Second rule is part BKCR', file=report_file)
+      elif any_blanket_1 and any_blanket_2:
+        print(f'  First rule is part BKCR; Second rule is all BKCR', file=report_file)
+      elif any_blanket_1:
+        print(f'  First rule is part BKCR; Second rule is not BKCR', file=report_file)
+
       elif all_blanket_2:
-        if any_blanket_1:
-          print(f'  First rule is part BKCR; Second rule is all BKCR', file=report_file)
-        else:
-          print(f'  First rule is not BKCR; Second rule is all BKCR; ', file=report_file)
+        print(f'  First rule is not BKCR; Second rule is all BKCR', file=report_file)
+      elif any_blanket_2:
+        print(f'  First rule is not BKCR; Second rule is part BKCR', file=report_file)
+
       else:
         print(f'  Neither rule is BKCR', file=report_file)
 
       if all_message_1 and all_message_2:
-        print(f'  Both rules are all MSG', file=report_file)
+        print(f'  Both rules are all MESG', file=report_file)
+      elif all_message_1 and any_message_2:
+        print(f'  First rule is all MESG; Second rule is part MESG', file=report_file)
       elif all_message_1:
-        if any_message_2:
-          print(f'  First rule is all MSG; Second rule is part MSG', file=report_file)
-        else:
-          print(f'  First rule is all MSG; Second rule is not MSG', file=report_file)
+        print(f'  First rule is all MESG; Second rule not MESG', file=report_file)
+
+      elif any_message_1 and all_message_2:
+        print(f'  First rule is part MESG; Second rule is part MESG', file=report_file)
+      elif any_message_1 and any_message_2:
+        print(f'  First rule is part MESG; Second rule is all MESG', file=report_file)
+      elif any_message_1:
+        print(f'  First rule is part MESG; Second rule is not MESG', file=report_file)
+
       elif all_message_2:
-        if any_message_1:
-          print(f'  First rule is part MSG; Second rule is all MSG', file=report_file)
-        else:
-          print(f'  First rule is not MSG; Second rule is all MSG; ', file=report_file)
+        print(f'  First rule is not MESG; Second rule is all MESG', file=report_file)
+      elif any_message_2:
+        print(f'  First rule is not MESG; Second rule is part MESG', file=report_file)
+
       else:
-        print(f'  Neither rule is MSG', file=report_file)
+        print(f'  Neither rule is MESG', file=report_file)
+
