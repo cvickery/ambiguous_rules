@@ -209,8 +209,9 @@ select s1.course_id, s1.offer_nbr, s1.discipline, s1.catalog_number, c.course_st
         m += 1
         print(f' {m:06,}/{n:06,}\r', end='')
 
-      # Ignore pairs where there are different numbers of sending courses
-      if len(rule_info[pair[0]].src_courses) != len(rule_info[pair[1]].src_courses):
+      # Ignore pairs where there are different sets of sending courses
+      if rule_info[pair[0]].src_courses != rule_info[pair[1]].src_courses:
+        print(f'{pair}: {rule_info[pair[0]].src_courses} != {rule_info[pair[1]].src_courses}\n')
         continue
 
       # Tell what rule-pair is being reported on

@@ -7,5 +7,7 @@ key=$1
 for line in `ack $key rules_report.txt|sort|uniq`
 do
   count=(`ack "$line" rules_report.txt|wc -l`)
-  echo -e "$count\t$line"
+  echo -e "$count\t$line\n----------------------------------------------------------------------"
+  examples=`ack -B 3 -A 2 $line rules_report.txt`
+  echo -e "$examples\n"
 done
