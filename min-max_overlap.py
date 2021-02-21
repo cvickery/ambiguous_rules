@@ -191,7 +191,21 @@ select s.*, c.course_status, c.designation, c.attributes
           if course_1.max_gpa > course_2.min_gpa or course_2.max_gpa > course_1.min_gpa:
             ambiguous_low = max(course_1.min_gpa, course_2.min_gpa)
             ambiguous_high = min(course_1.max_gpa, course_2.max_gpa)
-            ambiguities.append(format_range(course_1, ambiguous_low, ambiguous_high))
+            # Check for cross-listing possibilities
+            first_cursor.execute(f"""
+select offer_nbr, discipline, catalog_number, course_status
+  from cuny_courses
+ where course_id = {course_1.course_id}
+   and offer_nbr != {course_1.offer_nbr}
+""")
+            if first_cursor.rowcount > 0:
+              cross_listed = ' (' + '; '.join([f'[{course_1.course_id:06}.{c.offer_nbr} = '
+                                               f'{c.discipline} {c.catalog_number} '
+                                               f'{c.course_status}]'
+                                               for c in first_cursor.fetchall()]) + ')'
+            else:
+              cross_listed = ''
+            ambiguities.append(format_range(course_1, ambiguous_low, ambiguous_high) + cross_listed)
       if len(ambiguities) == 1:
         print(f'  Grade ambiguity: {ambiguities[0]}', file=report_file)
       else:

@@ -11,12 +11,13 @@ fi
 
 for line in `ack $key rules_report.txt|sort|uniq`
 do
-  count=(`ack "$line" rules_report.txt|wc -l`)
+  count=(`ack -c "$line" rules_report.txt`)
   printf "%'d cases:\t%s\n" $count $line
   if [[ $SUMMARY ]]
   then
     echo -e "----------------------------------------------------------------------"
-    examples=`ack -B 4 -A 2 $line rules_report.txt`
-    echo -e "$examples\n"
+    examples=`ack -B 4 -A 1 $line rules_report.txt`
+    echo "$examples"
+    echo
   fi
 done
