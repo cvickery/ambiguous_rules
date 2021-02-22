@@ -4,33 +4,81 @@
 # If the SUMMARY environment variable is set, arrange rules_report.txt into groups according to
 # which combination of receiving courses are all, partially, or not BKCR.
 
-# You can show any types of lines, but SUMMARY works only for BKCR.
-key=$1
-if [[ $key == '' ]]
+# You can show any types of lines, but SUMMARY works only for ambig, course, BKCR, and MESG.
+
+# Each report consists of exactly six lines, with identifying strings for each of the last three:
+#   1-2 Two lines summarizing the pair of rules where an ambiguity exists
+#   3   Summary of the courses where the ambiguous grade requirements were found. If there are
+#       cross-listed courses for the problem courses, they are listed in parens on the' same (long)
+#       line.
+#   4   course  Are the receiving courses the same for the two rules? What about the component
+#               subject areas?
+#   5   BKCR    Are the receiving courses all blanket, partly, or not at all for one, the other, or
+#               both rules?
+#   6   MESG    Are the RDs for the receiving courses MLA or MNL?
+#
+#   So, depending on the keyword used, we have to display different numbers of lines before and
+#   after the one matched in order to display the entire rule.
+
+# Default keyword is BKCR
+keyword=$1
+if [[ $keyword == '' ]]
 then
-  key=BKCR
+  keyword=BKCR
 fi
 
-IFS=$'\n'
-lines=`ack $key rules_report.txt|sort|uniq`
+# Is the keyword one of the known three values?
+# If so, set the number of lines before and after to display
+valid_keyword=False
+key=`echo $keyword | tr A-Z a-z | cut -c 1`
+case $key in
+  b)  valid_keyword=True
+      keyword=BKCR
+      before=4
+      after=1
+      ;;
+  c)  valid_keyword=True
+      keyword=courses
+      before=3
+      after=2
+      ;;
+  m)  valid_keyword=True
+      keyword=MESG
+      before=5
+      after=0
+      ;;
+  *)  echo Unrecognized keyword: $keyword
+      unset SUMMARY
+      ;;
+esac
 
+# Find set of matching lines
+IFS=$'\n'
+lines=`ack $keyword rules_report.txt | sort | uniq`
+if [[ ${#lines} == 0 ]]
+then echo No lines match \"$keyword\"
+     exit 1
+fi
+
+# Get the number of lines that match each member of the matching set
 for line in $lines
 do
   count=`ack -c "$line" rules_report.txt`
   echo -e "$count\t$line" >> $$_counts
 done
 
+# Show the matching lines, sorted by their counts
 for line in `cat $$_counts | sort -k1 -n`
 do
   echo $line
-  if [[ $SUMMARY ]]
+  #  Detailed report, if requested
+  if [[ $SUMMARY && $valid_keyword ]]
   then
     echo -e "----------------------------------------------------------------------"
     text=`echo "$line" | cut -f 2-`
-    examples=`ack -B 4 -A 1 "$text" rules_report.txt`
+    examples=`ack -B $before -A $after "$text" rules_report.txt`
     echo "$examples"
     echo
-  IFS=$'\n'
   fi
 done
 rm $$_counts
