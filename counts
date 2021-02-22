@@ -1,7 +1,10 @@
 #! /usr/local/bin/bash
 
-# Count different lines that match match a pattern
+# Show the different strings that appear in rules_report.txt. By default, ones that contain 'BKCR'.
+# If the SUMMARY environment variable is set, arrange rules_report.txt into groups according to
+# which combination of receiving courses are all, partially, or not BKCR.
 
+# You can show any types of lines, but SUMMARY works only for BKCR.
 key=$1
 if [[ $key == '' ]]
 then
