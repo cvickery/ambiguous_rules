@@ -1,16 +1,20 @@
 #! /usr/local/bin/python3
-
+""" Generate a report of ambiguous transfer rules.
+"""
 import argparse
 import psycopg
 import sys
 
 from collections import defaultdict, namedtuple
+from datetime import date
 from psycopg.rows import namedtuple_row
 from format_rules import _grade
 
 conn = psycopg.connect('dbname=cuny_curriculum')
-first_cursor = conn.cursor(row_factory=namedtuple_row)  # Used to find potentially ambiguous rules
-second_cursor = conn.cursor(row_factory=namedtuple_row)  # Used to lookup source_courses and, later, destination courses
+# Cursor to find potentially ambiguous rules
+first_cursor = conn.cursor(row_factory=namedtuple_row)
+# Cursor to lookup source_courses and, later, destination courses
+second_cursor = conn.cursor(row_factory=namedtuple_row)
 
 Rule = namedtuple('Rule', 'id key')
 
@@ -23,10 +27,10 @@ def key_order(key: str):
   parts = key.split(':')
   try:
     parts[3] = f'{int(parts[3]):04}'
-  except ValueError as ve:
+  except ValueError:
     print(f'Bogus rule_key: {key}', file=sys.stderr)
     return key
-  return(f'{parts[1]}:{parts[0]}:{parts[2]}:{parts[3]}')
+  return f'{parts[1]}:{parts[0]}:{parts[2]}:{parts[3]}'
 
 
 # format_range()
@@ -89,14 +93,16 @@ select  d.course_id,
 
 if __name__ == '__main__':
 
-  parser = argparse.ArgumentParser(description='Test DGW Parser')
+  parser = argparse.ArgumentParser(description='Generate ambiguous rules report')
   parser.add_argument('-d', '--debug', action='store_true', default=False)
   parser.add_argument('-p', '--progress', action='store_true', default=False)
   args = parser.parse_args()
 
   with psycopg.connect('dbname=cuny_curriculum') as conn:
-    with conn.cursor(row_factory=namedtuple_row) as first_cursor:  # For potentially ambiguous rules
-      with conn.cursor(row_factory=namedtuple_row)  as second_cursor: # For course lookups
+    # For potentially ambiguous rules
+    with conn.cursor(row_factory=namedtuple_row) as first_cursor:
+      # For course lookups
+      with conn.cursor(row_factory=namedtuple_row) as second_cursor:
 
         if args.progress:
           print('Lookup problem rules', file=sys.stderr)
@@ -175,7 +181,8 @@ if __name__ == '__main__':
         """
         m = 0
         n = len(ambiguous_pairs)
-        with open(f'./rules_report.txt', 'w') as report_file:
+        today = date.today()
+        with open(f'./reports/rules_report_{today}.txt', 'w') as report_file:
           # Process ambiguities in receiving college order
           for pair in sorted(ambiguous_pairs, key=lambda x: key_order(x[0].key)):
             if args.progress:
@@ -270,27 +277,27 @@ if __name__ == '__main__':
             #   any none
             #   none none
             if all_blanket_1 and all_blanket_2:
-              print(f'  Both rules are all BKCR', file=report_file)
+              print('  Both rules are all BKCR', file=report_file)
             elif all_blanket_1 and any_blanket_2 or any_blanket_1 and all_blanket_2:
-              print(f'  One rule is all BKCR; other rule is partly BKCR', file=report_file)
+              print('  One rule is all BKCR; other rule is partly BKCR', file=report_file)
             elif all_blanket_1 and not any_blanket_2 or not any_blanket_1 and all_blanket_2:
-              print(f'  One rule is all BKCR; other rule is not BKCR', file=report_file)
+              print('  One rule is all BKCR; other rule is not BKCR', file=report_file)
             elif any_blanket_1 and any_blanket_2:
-              print(f'  Both rules are partly BKCR', file=report_file)
+              print('  Both rules are partly BKCR', file=report_file)
             elif any_blanket_1 and not any_blanket_2 or not any_blanket_1 and any_blanket_2:
-              print(f'  One rule is partly BKCR; the other rule is not BKCR', file=report_file)
+              print('  One rule is partly BKCR; the other rule is not BKCR', file=report_file)
             else:
-              print(f'  Neither rule is BKCR', file=report_file)
+              print('  Neither rule is BKCR', file=report_file)
 
             if all_message_1 and all_message_2:
-              print(f'  Both rules are all MESG', file=report_file)
+              print('  Both rules are all MESG', file=report_file)
             elif all_message_1 and any_message_2 or any_message_1 and all_message_2:
-              print(f'  One rule is all MESG; other rule is partly MESG', file=report_file)
+              print('  One rule is all MESG; other rule is partly MESG', file=report_file)
             elif all_message_1 and not any_message_2 or not any_message_1 and all_message_2:
-              print(f'  One rule is all MESG; other rule is not MESG', file=report_file)
+              print('  One rule is all MESG; other rule is not MESG', file=report_file)
             elif any_message_1 and any_message_2:
-              print(f'  Both rules are partly MESG', file=report_file)
+              print('  Both rules are partly MESG', file=report_file)
             elif any_message_1 and not any_message_2 or not any_message_1 and any_message_2:
-              print(f'  One rule is partly MESG; the other rule is not MESG', file=report_file)
+              print('  One rule is partly MESG; the other rule is not MESG', file=report_file)
             else:
-              print(f'  Neither rule is MESG', file=report_file)
+              print('  Neither rule is MESG', file=report_file)
