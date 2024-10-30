@@ -163,8 +163,10 @@ if __name__ == '__main__':
           for index in range(len(r1_sending_courses)):
             assert (r1_sending_courses[index].course_id == r2_sending_courses[index].course_id
                     and r1_sending_courses[index].offer_nbr == r2_sending_courses[index].offer_nbr)
-            if r1_sending_courses[index].max_gpa > r2_sending_courses[index].min_gpa or \
-               r2_sending_courses[index].max_gpa > r1_sending_courses[index].min_gpa:
+
+            # Test for not not overlapping
+            if not ((r1_sending_courses[index].max_gpa < r2_sending_courses[index].min_gpa) or
+                    (r2_sending_courses[index].max_gpa < r1_sending_courses[index].min_gpa)):
               pair = (Rule._make([row.id_1, row.key_1]), Rule._make([row.id_2, row.key_2]))
               ambiguous_pairs.add(pair)
               source_info[pair] = (r1_sending_courses, r2_sending_courses)
@@ -202,7 +204,9 @@ if __name__ == '__main__':
             ambiguities = set()
             for course_1 in source_info[pair][0]:
               for course_2 in source_info[pair][1]:
-                if course_1.max_gpa > course_2.min_gpa or course_2.max_gpa > course_1.min_gpa:
+                if course_1.rule_id in [1443687, 1441399]:
+                  breakpoint()
+                if not (course_1.min_gpa > course_2.max_gpa or course_2.min_gpa > course_1.max_gpa):
                   ambiguous_low = max(course_1.min_gpa, course_2.min_gpa)
                   ambiguous_high = min(course_1.max_gpa, course_2.max_gpa)
                   # Check for cross-listing possibilities
